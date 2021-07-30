@@ -16,14 +16,25 @@ typedef struct {
 } PngImage;
 
 typedef struct {
-    int width, height, **pixel_matrix;
+    int width, height, grays, **pixel_matrix;
 } PgmImage;
 
-PngImage read_png_file(char *filename);
-
-void write_png_file(PngImage *img, char *filename);
+PngImage readPng(char *filename);
 
 PgmImage pngToPgm(PngImage *pngImg);
 
+PgmImage readPgm(char *filename);
+
+void writePgm(PgmImage *pgmImg, char *filename);
+
+char *sliceImageFilename(char *filename, int trailingInt);
+
 void binarizePgm(PgmImage *pgmImg);
+
+//void slicePgm(PgmImage * img, int n);
+
+int visitStar(PgmImage * img, int i, int j);
+
+int countStars(PgmImage * img);
+
 #endif
