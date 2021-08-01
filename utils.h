@@ -1,13 +1,6 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#define FREE2DARRAY(arr, n) {\
-    for(int i = 0; i < n; i++) {\
-        free(arr[i]);\
-    }\
-    free(arr);\
-}
-
 typedef struct {
     int width, height;
     png_byte color_type;
@@ -16,10 +9,14 @@ typedef struct {
 } PngImage;
 
 typedef struct {
-    int width, height, grays, **pixel_matrix;
+    int width, height, **pixel_matrix;
 } PgmImage;
 
 PngImage readPng(char *filename);
+
+void freePng(PngImage *pngImg);
+
+void mallocPgm(PgmImage *pgmImg);
 
 PgmImage pngToPgm(PngImage *pngImg);
 
@@ -27,7 +24,7 @@ PgmImage readPgm(char *filename);
 
 void writePgm(PgmImage *pgmImg, char *filename);
 
-char *sliceImageFilename(char *filename, int trailingInt);
+void freePgm(PgmImage *pgmImg);
 
 void binarizePgm(PgmImage *pgmImg);
 

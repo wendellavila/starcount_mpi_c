@@ -81,17 +81,20 @@ PngImage readPng(char *filename){
     return img;
 }
 
+void freePng(PngImage *pngImg){
+    for(int i = 0; i < pngImg->height; i++){
+        free(pngImg->row_pointers[i]);
+    }
+    free(pngImg->row_pointers);
+}
+
 PgmImage pngToPgm(PngImage *pngImg){
     //creating and allocating pgm image
     PgmImage pgmImg;
     pgmImg.width = pngImg->width;
     pgmImg.height = pngImg->height;
-    pgmImg.grays = 255;
 
-    pgmImg.pixel_matrix = malloc(pgmImg.height*sizeof(int *));
-    for (int i=0; i<pgmImg.height; i++){
-        pgmImg.pixel_matrix[i] = (int *)malloc(pgmImg.width * sizeof(int));
-    }
+    mallocPgm(&pgmImg);
 
     for(int i=0; i<pngImg->height; i++){
         png_bytep row = pngImg->row_pointers[i];
@@ -107,23 +110,33 @@ PgmImage pngToPgm(PngImage *pngImg){
     return pgmImg;
 }
 
+void mallocPgm(PgmImage *pgmImg){
+    // pgmImg->pixel_matrix = malloc(pgmImg->height*sizeof(int *));
+    // for (int i=0; i<pgmImg->height; i++){
+    //     pgmImg->pixel_matrix[i] = (int *)malloc(pgmImg->width * sizeof(int));
+    // }
+    int *data = (int *)malloc(pgmImg->height*pgmImg->width*sizeof(int));
+    pgmImg->pixel_matrix = (int **)malloc(pgmImg->height*sizeof(int*));
+    for(int i=0; i<pgmImg->height; i++){
+        pgmImg->pixel_matrix[i] = &(data[pgmImg->width*i]);
+    }
+}
+
 PgmImage readPgm(char *filename){
     FILE *fp;
     PgmImage pgmImg;
-	char p2, comment[500];
+	char p2, comment[200];
+    int grays;
 	
 	fp = fopen(filename, "r");
 
     fscanf(fp, "%s", &p2);                     //discarding read line
     fscanf(fp, "%s", comment);                 //discarding read line
-    fgets(comment, 500, fp);                   //discarding read line
+    fgets(comment, 200, fp);                   //discarding read line
     fscanf(fp, "%d %d", &pgmImg.width, &pgmImg.height);
-    fscanf(fp, "%d", &pgmImg.grays);
-	
-	pgmImg.pixel_matrix = malloc(pgmImg.height*sizeof(int *));
-    for (int i=0; i<pgmImg.height; i++){
-        pgmImg.pixel_matrix[i] = (int *)malloc(pgmImg.width * sizeof(int));
-    }
+    fscanf(fp, "%d", &grays);                  //discarding read line
+
+    mallocPgm(&pgmImg);
 	
 	for(int i=0; i<pgmImg.height; i++){
 		for(int j=0; j<pgmImg.width; j++){
@@ -143,10 +156,12 @@ void writePgm(PgmImage *pgmImg, char *filename){
         exit(1);
     }
 
+    int grays = 255;
+
     fprintf(fp, "P2\n");
     fprintf(fp, "# %s\n", filename);
     fprintf(fp, "%d %d\n", pgmImg->width, pgmImg->height);
-    fprintf(fp, "%d\n", pgmImg->grays);
+    fprintf(fp, "%d\n", grays);
 
     for(int i=0; i < pgmImg->height; i++){
         for(int j=0; j < pgmImg->width; j++){
@@ -156,30 +171,9 @@ void writePgm(PgmImage *pgmImg, char *filename){
     }
 }
 
-char *sliceImageFilename(char *filename, int trailingInt){
-
-    int filenameLen = strlen(filename);
-
-    //saving extension
-    char *extension = ".pgm";
-
-    //creating output string
-    char *outFilename = malloc(sizeof(char) * filenameLen + 12);
-    strcpy(outFilename, filename);
-
-    //removing extension
-    outFilename[filenameLen-4] = '\0';
-
-    //int to char
-    char trailingChar[11];
-    sprintf(trailingChar,"%d", trailingInt);
-    
-    char *separator = "-";
-
-    //concatenating
-    outFilename = strcat(strcat(strcat(outFilename, separator), trailingChar), extension);
-
-    return outFilename;
+void freePgm(PgmImage *pgmImg){
+    free(pgmImg->pixel_matrix[0]);
+    free(pgmImg->pixel_matrix);
 }
 
 void binarizePgm(PgmImage *pgmImg){

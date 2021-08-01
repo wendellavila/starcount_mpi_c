@@ -2,18 +2,29 @@
 #include <stdio.h>
 #include <png.h>
 #include <mpi.h>
+#include <string.h>
 #include "utils.h"
 
 int main(int argc, char *argv[]){
 
     int rank, size;
+    int totalStarCount = 0;
 
     MPI_Init(&argc, &argv);
 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Status status;
 
     if(rank == 0){
+        // FILE *fp = fopen ("filepaths.txt", "r" );
+        // if(fp != NULL){
+        //     char filename [128];
+        //     while(fgets(filename, sizeof filename, fp) != NULL){
+                
+        //     }
+
+        // }
         char *filename = "img/image.png";
 
         printf("%d: reading %s\n", rank, filename);
@@ -32,57 +43,51 @@ int main(int argc, char *argv[]){
             PgmImage sliceImg;
             sliceImg.width = sliceWidth;
             sliceImg.height = pgmImg.height;
-            sliceImg.grays = 255;
 
-            sliceImg.pixel_matrix = malloc(sliceImg.height*sizeof(int *));
-            for (int j=0; j < sliceImg.height; j++){
-                sliceImg.pixel_matrix[j] = (int *)malloc(sliceImg.width * sizeof(int));
-            }
+            mallocPgm(&sliceImg);
 
             for(int k=0; k < sliceImg.height; k++){
                 for(int l=0; l < sliceImg.width; l++){
                     sliceImg.pixel_matrix[k][l] = pgmImg.pixel_matrix[k][(i * sliceWidth) + l];
                 }
             }
-            char *sliceImgFilename = sliceImageFilename(filename, i);
-            writePgm(&sliceImg, sliceImgFilename);
 
-            printf("%d: slice saved in file. sending file path to slave %d\n", rank, i);
-            //SEND FILE PATH TO SLAVE i HERE
-            
-            free(sliceImgFilename);
-            FREE2DARRAY(sliceImg.pixel_matrix, sliceImg.height);
+            printf("%d: sending slice %d to slave %d\n", rank, i, i);
+            MPI_Send(&sliceImg.width, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+            MPI_Send(&sliceImg.height, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+            MPI_Send(&(sliceImg.pixel_matrix[0][0]), sliceImg.width*sliceImg.height, MPI_INT, i, 1, MPI_COMM_WORLD);;
+            freePgm(&sliceImg);
         }
-        printf("%d: waiting until all slaves return a count\n", rank);
-        //RECEIVE COUNT MESSAGE FROM ALL SLAVES HERE
-        //starCount = starCount + countStars(&sliceImg);
-        printf("%d: total number of stars = \n", rank);
+        freePng(&pngImg);
+        freePgm(&pgmImg);
 
-        FREE2DARRAY(pngImg.row_pointers, pngImg.height);
-        FREE2DARRAY(pgmImg.pixel_matrix, pgmImg.height);
+        printf("%d: waiting until all slaves return a count\n", rank);
+        MPI_Reduce(MPI_IN_PLACE, &totalStarCount, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+        printf("%d: total number of stars = %d\n", rank, totalStarCount);
     }
     else {
-        //RECEIVE FILE PATH FROM MASTER HERE
-        printf("%d: waiting to receive a file path from master\n", rank);
+        printf("\t%d: waiting to receive image slice from master\n", rank);
 
-        //printf("%d: reading slice from pgm file\n", rank);
-        //PgmImage sliceImg = readPgm(sliceImgFilename);
+        PgmImage sliceImg;
+        MPI_Recv(&sliceImg.width, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+        MPI_Recv(&sliceImg.height, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+        mallocPgm(&sliceImg);
+        MPI_Recv(&(sliceImg.pixel_matrix[0][0]), sliceImg.width*sliceImg.height, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+        printf("\t%d: received image slice from master\n", rank);
 
-        //printf("%d: binarizing pgm\n", rank);
-        //binarizePgm(&pgmImg);
+        printf("\t%d: binarizing pgm\n", rank);
+        binarizePgm(&sliceImg);
+        printf("\t%d: binarization successful\n", rank);
 
-        //printf("%d: counting stars in slice\n", rank);
-        //int starCount = countStars(&sliceImg);
-        //printf("%d: counting finished: stars in slice = %d\n", rank, starCount);
+        printf("\t%d: counting stars in slice %d\n", rank, rank);
+        int starCount = countStars(&sliceImg);
+        printf("\t%d: counting finished: stars in slice = %d\n", rank, starCount);
 
-        //SEND COUNT TO MASTER HERE
-        //printf("%d: sending local count to master\n", rank);
+        printf("\t%d: sending local count to master\n", rank);
+        MPI_Reduce(&starCount, &totalStarCount, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 
-        //remove(sliceImgFilename);
-        //FREE2DARRAY(sliceImg.pixel_matrix, sliceImg.height);
+        freePgm(&sliceImg);
     }
-    MPI_Barrier(MPI_COMM_WORLD);
-
     MPI_Finalize();
 
     return 0;
