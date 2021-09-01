@@ -1,12 +1,12 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
 #include <png.h>
 #include <mpi.h>
 #include <string.h>
 #include "utils.h"
 
 int main(int argc, char *argv[]){
-
     int rank, size;
     int totalCount = 0;
 
@@ -38,7 +38,21 @@ int main(int argc, char *argv[]){
                 PgmImage pgmImg = pngToPgm(&pngImg);
                 printf("%d: conversion finished\n", rank);
 
-                int numSlices = 3;
+                int numSlices = size-1;
+                //picking number of slices from argv if available
+                //otherwise stick with standard of 1 slice per slave
+                if(argc == 2){
+                    char* endarg;
+                    errno = 0;
+                    long arg = strtol(argv[1], &endarg, 10);
+                    if(*endarg == '\0' && errno == 0 && arg>0){
+                        numSlices = arg;
+                    }
+                    else if(arg<=0){
+                        numSlices = 1;
+                    }
+                }
+                
                 int sliceHeight = pgmImg.height / numSlices;
                 int nextSlave = 1;
                 //slicing image in ranknum-1 horizontal slices
