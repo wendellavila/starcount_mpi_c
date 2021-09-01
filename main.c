@@ -8,7 +8,7 @@
 int main(int argc, char *argv[]){
 
     int rank, size;
-    int totalStarCount = 0;
+    int totalCount = 0;
 
     MPI_Init(&argc, &argv);
 
@@ -20,19 +20,16 @@ int main(int argc, char *argv[]){
 
     //master
     if(rank == 0){
-        FILE *imgFile = fopen ("filepaths.txt", "r" );
+        FILE *fp = fopen ("filepaths.txt", "r" );
         int hasNextImage;
-        if(imgFile != NULL){
+        if(fp != NULL){
             int numFiles;
-            fscanf(imgFile, "%d", &numFiles);
+            fscanf(fp, "%d", &numFiles);
             
             for(int w = 0; w < numFiles; w++){
                 char filename[100];
-                fscanf(imgFile, "%s", filename);
+                fscanf(fp, "%s", filename);
                 hasNextImage = 1;
-                for(int i=1; i < size; i++){
-                    MPI_Send(&hasNextImage, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-                }
 
                 printf("%d: reading %s\n", rank, filename);
                 PngImage pngImg = readPng(filename);
@@ -41,63 +38,68 @@ int main(int argc, char *argv[]){
                 PgmImage pgmImg = pngToPgm(&pngImg);
                 printf("%d: conversion finished\n", rank);
 
-                int sliceHeight = pgmImg.height / (size-1);
-
+                int numSlices = 3;
+                int sliceHeight = pgmImg.height / numSlices;
+                int nextSlave = 1;
                 //slicing image in ranknum-1 horizontal slices
-                printf("%d: slicing full image in %d slices\n", rank, size-1);
-                for(int i=1; i < size; i++){
-                    printf("%d: sending slice %d to slave %d\n", rank, i, i);
-                    MPI_Send(&pgmImg.width, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-                    MPI_Send(&sliceHeight, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-                    MPI_Send(&(pgmImg.pixel_matrix[(i-1) * sliceHeight][0]), pgmImg.width*sliceHeight, MPI_INT, i, 1, MPI_COMM_WORLD);;
+                printf("%d: slicing full image in %d slices\n", rank, numSlices);
+                for(int i=0; i < numSlices; i++){
+                    MPI_Send(&hasNextImage, 1, MPI_INT, nextSlave, 0, MPI_COMM_WORLD);
+                    printf("%d: sending slice %d to slave %d\n", rank, i+1, nextSlave);
+                    MPI_Send(&pgmImg.width, 1, MPI_INT, nextSlave, 1, MPI_COMM_WORLD);
+                    MPI_Send(&sliceHeight, 1, MPI_INT, nextSlave, 1, MPI_COMM_WORLD);
+                    MPI_Send(&(pgmImg.pixel_matrix[i * sliceHeight][0]), pgmImg.width*sliceHeight, MPI_INT, nextSlave, 1, MPI_COMM_WORLD);
+                    if((nextSlave+1) >= size){
+                        nextSlave = 1;
+                    }
+                    else {
+                        nextSlave++;
+                    }
                 }
                 freePng(&pngImg);
                 freePgm(&pgmImg);
-
-                printf("%d: waiting until all slaves return a count\n", rank);
-                MPI_Reduce(MPI_IN_PLACE, &totalStarCount, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-                printf("%d: partial number of stars: %d\n", rank, totalStarCount);
             }//end for numFiles
-            printf("%d: all stars in all files counted\n");
+            printf("%d: all files loaded and sent to slaves\n");
         }//end file check
         hasNextImage = 0;
         for(int i=1; i < size; i++){
             MPI_Send(&hasNextImage, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
         }
-        fclose(imgFile);
-        printf("%d: total number of stars: [%d]\n", rank, totalStarCount);
+        fclose(fp);
+        printf("%d: waiting until all slaves return their local count\n", rank);
+        MPI_Reduce(MPI_IN_PLACE, &totalCount, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+        printf("\n%d: total number of stars: [%d]\n", rank, totalCount);
         double endtime = MPI_Wtime();
-        printf("%d: elapsed time: %f seconds\n", rank, endtime-starttime);
+        printf("%d: elapsed time: %f seconds\n\n", rank, endtime-starttime);
     }//end master
     else { //slaves
+        int localCount = 0;
         for(;;){ //while true
             int hasNextImage;
             MPI_Recv(&hasNextImage, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
             if(hasNextImage != 0){
-                printf("\t%d: waiting to receive image slice from master\n", rank);
+                printf("    %d: waiting to receive image slice from master\n", rank);
 
                 PgmImage sliceImg;
-                MPI_Recv(&sliceImg.width, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-                MPI_Recv(&sliceImg.height, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+                MPI_Recv(&sliceImg.width, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+                MPI_Recv(&sliceImg.height, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
                 mallocPgm(&sliceImg);
                 MPI_Recv(&(sliceImg.pixel_matrix[0][0]), sliceImg.width*sliceImg.height, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
-                printf("\t%d: received image slice from master\n", rank);
-
-                printf("\t%d: binarizing pgm\n", rank);
+                printf("    %d: received image slice from master\n", rank);
+                printf("    %d: binarizing slice\n", rank);
                 binarizePgm(&sliceImg);
-                printf("\t%d: binarization finished\n", rank);
-
-                printf("\t%d: counting stars in slice %d\n", rank, rank);
-                int starCount = countStars(&sliceImg);
-                printf("\t%d: local counting finished: stars in slice: %d\n", rank, starCount);
-
-                printf("\t%d: sending local count to master\n", rank);
-                MPI_Reduce(&starCount, &totalStarCount, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-
+                printf("    %d: binarization finished\n", rank);
+                printf("    %d: counting stars in slice\n", rank);
+                int sliceCount = countStars(&sliceImg);
+                printf("    %d: counting in slice finished: %d stars found\n", rank, sliceCount);
+                localCount = localCount + sliceCount;
                 freePgm(&sliceImg);
             }
             else {
-                printf("\t%d: no more images to be processed\n", rank);
+                printf("    %d: no more images to be processed. slave %d has counted %d stars in total.\n", rank, rank, localCount);
+                printf("    %d: sending local count to master\n", rank);
+                MPI_Reduce(&localCount, &totalCount, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
                 break;
             }
         }//end while true
