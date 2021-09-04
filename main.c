@@ -6,6 +6,17 @@
 #include <string.h>
 #include "utils.h"
 
+/* Projeto de Desempenho Paralelo - Programa contador de estrelas utilizando OpenMPI
+
+Autor: Wendell João Castro de Ávila 2017.1.08.013
+RA:    2017.1.08.013
+Data:  3/9/2021
+
+Execução:
+mpirun -n numProcessadores starCount
+
+*/
+
 int main(int argc, char *argv[]){
     int rank, size;
     int totalCount = 0;
@@ -36,6 +47,7 @@ int main(int argc, char *argv[]){
                 printf("%d: reading finished\n", rank);
                 printf("%d: converting %s to pgm\n", rank, filename);
                 PgmImage pgmImg = pngToPgm(&pngImg);
+                freePng(&pngImg);
                 printf("%d: conversion finished\n", rank);
 
                 int numSlices = size-1;
@@ -70,7 +82,6 @@ int main(int argc, char *argv[]){
                         nextSlave++;
                     }
                 }
-                freePng(&pngImg);
                 freePgm(&pgmImg);
             }//end for numFiles
             printf("%d: all files loaded and sent to slaves\n");
@@ -106,9 +117,9 @@ int main(int argc, char *argv[]){
                 printf("    %d: binarization finished\n", rank);
                 printf("    %d: counting stars in slice\n", rank);
                 int sliceCount = countStars(&sliceImg);
+                freePgm(&sliceImg);
                 printf("    %d: counting in slice finished: %d stars found\n", rank, sliceCount);
                 localCount = localCount + sliceCount;
-                freePgm(&sliceImg);
             }
             else {
                 printf("    %d: no more images to be processed. slave %d has counted %d stars in total.\n", rank, rank, localCount);
